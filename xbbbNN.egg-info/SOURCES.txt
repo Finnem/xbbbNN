@@ -1,5 +1,8 @@
 setup.py
+test/test.py
+test/test_points.py
 xbbbNN/__init__.py
+xbbbNN/applicable_functions.py
 xbbbNN/callbacks.py
 xbbbNN/data_extraction.py
 xbbbNN/models.py

@@ -1,5 +1,15 @@
 from xbpy import rdutil
 import numpy as np
+
+class NetworkApplication:
+    def __init__(self, parameter_path = None):
+        self.parameter_path = parameter_path
+
+
+class SmallXBBBNetworkApplication(NetworkApplication):
+    def __init__(self, parameter_path = None):
+        super().__init__(parameter_path)
+
 def get_xb_bb_positions(oxygen_atom):
     """
     Returns the positions relevant to the heatvolume function for each potential acceptor:
@@ -96,6 +106,8 @@ def get_network_features(halogen_type, halogen_position, carbon_position, accept
     X_to_H_C_C_O = np.array(acceptor_positions[3]) - np.array(halogen_position) 
     X_to_H_C_N_O = np.array(acceptor_positions[7]) - np.array(halogen_position) 
 
+    def angle(a, b):
+        return np.dot(a, b)/(np.linalg.norm(a) * np.linalg.norm(b))
     XC_to_X = np.array(halogen_position) - np.array(carbon_position); XC_to_X /= np.linalg.norm(XC_to_X)
 
     chlorine = 1 if halogen_type == "Cl" else 0; bromine = 1 if halogen_type == "Br" else 0; iodine = 1 if halogen_type == "I" else 0
@@ -105,13 +117,13 @@ def get_network_features(halogen_type, halogen_position, carbon_position, accept
     distances = np.array([np.linalg.norm(X_to_O), np.linalg.norm(X_to_C_O), np.linalg.norm(X_to_N_O), np.linalg.norm(X_to_C_C_O), np.linalg.norm(X_to_H_N_O), np.linalg.norm(X_to_C_N_O), np.linalg.norm(X_to_H_C_C_O), np.linalg.norm(X_to_H_C_N_O)])
     distances = np.clip(6 - distances, 0.0, 6.0)
 
-    head_on_input = np.array([distances[0], distances[2], np.dot(X_to_O, CO_to_O), np.dot(X_to_N_O, BB_to_N), np.dot(X_to_O, XC_to_X), np.dot(X_to_N_O, XC_to_X), chlorine, bromine, iodine])
+    head_on_input = np.array([distances[0], distances[2], angle(X_to_O, CO_to_O), angle(X_to_N_O, BB_to_N), angle(X_to_O, XC_to_X), angle(X_to_N_O, XC_to_X), chlorine, bromine, iodine])
 
-    side_on_input = np.array([*np.clip(distances - 1, 0, 5), np.dot(X_to_O, XC_to_X), np.dot(X_to_C_O, XC_to_X), np.dot(X_to_N_O, XC_to_X), np.dot(X_to_C_C_O, XC_to_X), np.dot(X_to_H_N_O, XC_to_X), np.dot(X_to_C_N_O, XC_to_X), np.dot(X_to_H_C_C_O, XC_to_X), np.dot(X_to_H_C_N_O, XC_to_X), chlorine, bromine, iodine])
+    side_on_input = np.array([*np.clip(distances - 1, 0, 5), angle(X_to_O, XC_to_X), angle(X_to_C_O, XC_to_X), angle(X_to_N_O, XC_to_X), angle(X_to_C_C_O, XC_to_X), angle(X_to_H_N_O, XC_to_X), angle(X_to_C_N_O, XC_to_X), angle(X_to_H_C_C_O, XC_to_X), angle(X_to_H_C_N_O, XC_to_X), chlorine, bromine, iodine])
 
     return head_on_input, side_on_input
 
-def apply_small_network_explicit(features):
+def apply_small_network(features):
     SmallSideOnInputGate = np.array([0.053437013, 0.08720989, 0.03499039, 0.17911866, 0.052967586, 0.14525391, 0.3594176, 0.15516634, -0.00030686276, 0.090750456, 0.000516477, 0.1443829, 0.051579367, 0.055814285, 0.01121225, 0.030701246, 0.013733487, 0.00082908425, 0.043782104])
     SmallSideOnDenseKernel0 = np.array([-1.0945588e+00, 1.0210054e+00, -8.9513443e-02, 4.9032667e-01,
         3.7412286e-01, 8.8899440e-01, 7.5313997e-01, 5.8522290e-01,
@@ -189,10 +201,7 @@ def small_network_evaluation(halogen_position, orientation, acceptor_atoms, halo
         carbon_position = halogen_position - (orientation * bond_distance)
         head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_position, acceptor_positions)
 
-        if explicit:
-            head_on_result, side_on_result = apply_small_network_explicit([head_on_input, side_on_input])
-        else:
-            head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
+        head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
         summed_head_on_result += head_on_result
         summed_side_on_result += side_on_result
     return summed_head_on_result + summed_side_on_result
@@ -211,10 +220,7 @@ def head_on_network_evaluation(halogen_position, orientation, acceptor_atoms, ha
         carbon_position = halogen_position - (orientation * bond_distance)
         head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_position, acceptor_positions)
         
-        if explicit:
-            head_on_result, side_on_result = apply_small_network_explicit([head_on_input, side_on_input])
-        else:
-            head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
+        head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
         summed_head_on_result.append(head_on_result[0])
         summed_side_on_result.append(side_on_result[0])
     return np.max(summed_head_on_result)

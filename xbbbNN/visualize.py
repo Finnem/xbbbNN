@@ -40,14 +40,14 @@ def visualize(function, file):
                         scores = []
                         for orientation in considered_orientations:
                             scores.append(function(point, orientation, viable_acceptors, halogen_symbol = halogen.GetSymbol(), bond_distance = neighbor_distance))
-                        next_orientation = considered_orientations[np.argmin(scores)]
-                    best_scores.append(min(scores))
+                        next_orientation = considered_orientations[np.argmax(scores)]
+                    best_scores.append(max(scores))
                     arrows.append([point + (next_orientation * arrow_length), point])
             if arrows:
                 print(best_scores)
                 arrows = np.array(arrows)
                 best_scores = np.array(best_scores)
-                arrows = pmv.Arrows(arrows[best_scores < 0], color = best_scores[best_scores < 0], name = f"BP_{bp_index}_{halogen.GetSymbol()}_{halogen.GetIdx()}_Arrows", linewidth=0.05, head_length=0.6)    
+                arrows = pmv.Arrows(arrows[best_scores > 0], color = best_scores[best_scores > 0], name = f"BP_{bp_index}_{halogen.GetSymbol()}_{halogen.GetIdx()}_Arrows", linewidth=0.05, head_length=0.6)    
                 visuals[(bp_index, halogen.GetIdx())] = pmv.Group([arrows, arrows.colormap], name = f"BP_{bp_index}_{halogen.GetSymbol()}_{halogen.GetIdx()}_Group")
     return pmv.Script(visuals.values())
     
