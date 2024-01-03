@@ -4,7 +4,7 @@ import tensorflow as tf
 
 
 xbbbNN_model_counter = 0
-def construct_parallel_MLP(input, layers, name = None, regularizers = None, regularize_input = False, sum_results = False):
+def construct_parallel_MLP(input, layers, name = None, regularizers = None, regularize_input = False):
     """ 
     Constructs the architecture for multiple, parallel running MultiLayer Perceptrons.
 
@@ -14,16 +14,15 @@ def construct_parallel_MLP(input, layers, name = None, regularizers = None, regu
         name (str or array-like): Name of the MLPs created.
 
     """
-    try:
-        layers[0][0]
-    except TypeError:
+    layers = np.array(layers)
+    created_inputs = []
+    created_layers = []
+    if len(layers.shape) == 1:
         layers = np.array([layers])
         name = np.array([name])
         input = [input]
         regularizers = [regularizers]
 
-    created_inputs = []
-    created_layers = []
     if regularizers is None:
         regularizers = [None] * len(layers)
 
@@ -32,7 +31,7 @@ def construct_parallel_MLP(input, layers, name = None, regularizers = None, regu
     if name is None: name = [_get_default_name() for i in range(len(layers))]
     # for each set of names, inputs and layers:
     for n, i, parallel_layers, reg in zip(name, input, layers, regularizers):
-        input_layer = keras.layers.Input(shape = (i.shape[1]), name = f"{n}_input")
+        input_layer = keras.layers.Input(shape = (len(i.keys())), name = f"{n}_input")
         created_inputs.append(input_layer)
         if regularize_input:
             model = IsolatedActivation(name = "input_gate")(input_layer)
@@ -49,13 +48,8 @@ def construct_parallel_MLP(input, layers, name = None, regularizers = None, regu
         created_layers.append(model)
     if len(created_layers) > 1:
         model = keras.layers.Concatenate(name = f"{'-'.join(name)}_result_concat")(created_layers)
-        if sum_results:
-            # fixed dense layer to just sum the results
-            model = keras.layers.Dense(1, activation=tf.keras.activations.linear, name = f"{'-'.join(name)}_result_sum", trainable = False, kernel_initializer = tf.keras.initializers.Identity())(model)
-
     else:
         model = created_layers[0]    
-
     return created_inputs, model
 
 def construct_residual_MLP(input, layers, name = None):

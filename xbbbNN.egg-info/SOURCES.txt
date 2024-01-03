@@ -3,6 +3,7 @@ xbbbNN/__init__.py
 xbbbNN/callbacks.py
 xbbbNN/data_extraction.py
 xbbbNN/models.py
+xbbbNN/visualize.py
 xbbbNN.egg-info/PKG-INFO
 xbbbNN.egg-info/SOURCES.txt
 xbbbNN.egg-info/dependency_links.txt
