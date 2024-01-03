@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: xbbbNN
+Version: 1.0
+Summary: Library to train NN to predict binding energies between halobenzenes and the protein backbone.
+Home-page: https://github.com/Finnem/xbbbNN
+Author: Finn Mier
+License: MIT
