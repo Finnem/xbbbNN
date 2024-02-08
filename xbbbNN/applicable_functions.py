@@ -79,24 +79,7 @@ def get_xb_bb_positions(oxygen_atom):
     return positions
 
 
-def _infer_single_hydrogen_position(atom, length = None):
-    """
-    Infers the hydrogen position of an atom based on the position of its neighbors
-    """
-    if atom.GetSymbol() == "N":
-        length = 1.0
-    else:
-        length = 1.1
-    # inferring HA position
-    neighbor_positions = np.array([rdutil.position(a) for a in atom.GetNeighbors()])
-    neighbor_positions -= rdutil.position(atom)
-    mean_position = neighbor_positions.mean(axis = 0)
-    mean_position /= np.linalg.norm(mean_position)
-    mean_position *= -length
-    inferred_position = rdutil.position(atom) + mean_position
-    return inferred_position
-
-def get_network_features(halogen_type, halogen_position, carbon_position, acceptor_positions):
+def get_network_features(halogen_type, halogen_position, carbon_positions, acceptor_positions):
     X_to_O = np.array(acceptor_positions[0]) - np.array(halogen_position) 
     X_to_C_O = np.array(acceptor_positions[1]) - np.array(halogen_position) 
     X_to_N_O = np.array(acceptor_positions[4]) - np.array(halogen_position) 
@@ -106,20 +89,35 @@ def get_network_features(halogen_type, halogen_position, carbon_position, accept
     X_to_H_C_C_O = np.array(acceptor_positions[3]) - np.array(halogen_position) 
     X_to_H_C_N_O = np.array(acceptor_positions[7]) - np.array(halogen_position) 
 
+    carbon_positions = np.array(carbon_positions)
+    if len(carbon_positions.shape) == 1:
+        carbon_positions = carbon_positions.reshape((1, -1))
+        was_single = True
+    else:
+        was_single = False
+
     def angle(a, b):
-        return np.dot(a, b)/(np.linalg.norm(a) * np.linalg.norm(b))
-    XC_to_X = np.array(halogen_position) - np.array(carbon_position); XC_to_X /= np.linalg.norm(XC_to_X)
+        return a @ b / (np.linalg.norm(a) * np.linalg.norm(b))
+    def angle_broadcast(a, b):
+        return np.sum(a[None, :] * b, axis = 1) / (np.linalg.norm(a) * np.linalg.norm(b, axis = 1))
+    XC_to_X = np.array(halogen_position) - np.array(carbon_positions); XC_to_X /= np.linalg.norm(XC_to_X, axis = 1).reshape((-1, 1))
 
     chlorine = 1 if halogen_type == "Cl" else 0; bromine = 1 if halogen_type == "Br" else 0; iodine = 1 if halogen_type == "I" else 0
     CO_to_O = np.array(acceptor_positions[0]) - np.array(acceptor_positions[1]); CO_to_O /= np.linalg.norm(CO_to_O)
-    BB_to_N = np.array(acceptor_positions[4]) - np.array([acceptor_positions[2], acceptor_positions[6]]).mean(axis = 0); BB_to_N /= np.linalg.norm(BB_to_N)
-
+    BB_to_N = np.array(acceptor_positions[4] - np.array([acceptor_positions[1], acceptor_positions[6], acceptor_positions[5]])).mean(axis = 0); BB_to_N /= np.linalg.norm(BB_to_N)
+    #BB_to_N = np.array(acceptor_positions[4] - np.array([acceptor_positions[1], acceptor_positions[6]])).mean(axis = 0); BB_to_N /= np.linalg.norm(BB_to_N)
+    
     distances = np.array([np.linalg.norm(X_to_O), np.linalg.norm(X_to_C_O), np.linalg.norm(X_to_N_O), np.linalg.norm(X_to_C_C_O), np.linalg.norm(X_to_H_N_O), np.linalg.norm(X_to_C_N_O), np.linalg.norm(X_to_H_C_C_O), np.linalg.norm(X_to_H_C_N_O)])
     distances = np.clip(6 - distances, 0.0, 6.0)
 
-    head_on_input = np.array([distances[0], distances[2], angle(X_to_O, CO_to_O), angle(X_to_N_O, BB_to_N), angle(X_to_O, XC_to_X), angle(X_to_N_O, XC_to_X), chlorine, bromine, iodine])
+    head_on_input = np.array([np.full((len(carbon_positions),), distances[0]), np.full((len(carbon_positions)), distances[2]), np.full((len(carbon_positions),), angle(X_to_O, CO_to_O)), np.full((len(carbon_positions),), angle(X_to_N_O, BB_to_N)), angle_broadcast(X_to_O, XC_to_X), angle_broadcast(X_to_N_O, XC_to_X), np.full((len(carbon_positions),), chlorine), np.full((len(carbon_positions),), bromine), np.full((len(carbon_positions),), iodine)]).T
 
-    side_on_input = np.array([*np.clip(distances - 1, 0, 5), angle(X_to_O, XC_to_X), angle(X_to_C_O, XC_to_X), angle(X_to_N_O, XC_to_X), angle(X_to_C_C_O, XC_to_X), angle(X_to_H_N_O, XC_to_X), angle(X_to_C_N_O, XC_to_X), angle(X_to_H_C_C_O, XC_to_X), angle(X_to_H_C_N_O, XC_to_X), chlorine, bromine, iodine])
+    side_on_input = np.clip(np.full((len(carbon_positions), len(distances)), distances) - 1, 0, 5)
+    side_on_input = np.concatenate((side_on_input, angle_broadcast(X_to_O, XC_to_X)[:, None], angle_broadcast(X_to_C_O, XC_to_X)[:, None], angle_broadcast(X_to_N_O, XC_to_X)[:, None], angle_broadcast(X_to_C_C_O, XC_to_X)[:, None], angle_broadcast(X_to_H_N_O, XC_to_X)[:, None], angle_broadcast(X_to_C_N_O, XC_to_X)[:, None], angle_broadcast(X_to_H_C_C_O, XC_to_X)[:, None], angle_broadcast(X_to_H_C_N_O, XC_to_X)[:, None], np.full((len(carbon_positions),1), chlorine), np.full((len(carbon_positions),1), bromine), np.full((len(carbon_positions),1), iodine)), axis = 1)
+
+    if was_single:
+        head_on_input = head_on_input[0]
+        side_on_input = side_on_input[0]
 
     return head_on_input, side_on_input
 
@@ -175,19 +173,19 @@ def apply_small_network(features):
     side_on_biases = [SmallSideOnDenseBias0, SmallSideOnDenseBias1, SmallSideOnDenseBias2]
     side_on_input_gate = SmallSideOnInputGate
 
-    head_on_result = head_on_input_gate * head_on_input
+    head_on_result =  head_on_input * head_on_input_gate[None, :] 
     for kernel, bias in zip(head_on_kernels, head_on_biases):
-        head_on_result = np.matmul(head_on_result.T, kernel) + bias.T
+        head_on_result = np.matmul(head_on_result, kernel) + bias
         head_on_result[head_on_result < 0] = head_on_result[head_on_result < 0] * 0.2
 
-    side_on_result = side_on_input_gate * side_on_input
+    side_on_result = side_on_input_gate * side_on_input[None, :]
     for kernel, bias in zip(side_on_kernels, side_on_biases):
-        side_on_result = np.matmul(side_on_result.T, kernel) + bias.T
+        side_on_result = np.matmul(side_on_result, kernel) + bias
         side_on_result[side_on_result < 0] = side_on_result[side_on_result < 0] * 0.2
 
     return head_on_result, side_on_result
 
-def small_network_evaluation(halogen_position, orientation, acceptor_atoms, halogen_symbol, bond_distance, explicit = True):
+def small_network_evaluation(halogen_position, orientations, acceptor_atoms, halogen_symbol, bond_distance, explicit = True):
     """
     Evaluates the small network on a single example
     """
@@ -198,29 +196,31 @@ def small_network_evaluation(halogen_position, orientation, acceptor_atoms, halo
             acceptor_positions = get_xb_bb_positions(acceptor_atom)
         except IndexError:
             continue
-        carbon_position = halogen_position - (orientation * bond_distance)
-        head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_position, acceptor_positions)
+        carbon_positions = halogen_position - (orientations * bond_distance)
+        head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_positions, acceptor_positions)
 
         head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
         summed_head_on_result += head_on_result
         summed_side_on_result += side_on_result
     return summed_head_on_result + summed_side_on_result
 
-def head_on_network_evaluation(halogen_position, orientation, acceptor_atoms, halogen_symbol, bond_distance, explicit = True):
+def head_on_network_evaluation(halogen_position, orientations, acceptor_atoms, halogen_symbol, bond_distance, explicit = True):
     """
     Evaluates the small network on a single example
     """
-    summed_head_on_result = [0.0]
-    summed_side_on_result = [0.0]
+    summed_head_on_result = [[0.0] * len(orientations)]
+    summed_side_on_result = [[0.0] * len(orientations)]
     for acceptor_atom in acceptor_atoms:
         try:
             acceptor_positions = get_xb_bb_positions(acceptor_atom)
         except IndexError:
             continue
-        carbon_position = halogen_position - (orientation * bond_distance)
-        head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_position, acceptor_positions)
+        carbon_positions = halogen_position + (orientations * bond_distance)
+        head_on_input, side_on_input = get_network_features(halogen_symbol, halogen_position, carbon_positions, acceptor_positions)
         
         head_on_result, side_on_result = apply_small_network([head_on_input, side_on_input])
-        summed_head_on_result.append(head_on_result[0])
-        summed_side_on_result.append(side_on_result[0])
-    return np.max(summed_head_on_result)
+        summed_head_on_result.append(head_on_result.flatten())
+        summed_side_on_result.append(side_on_result.flatten())
+    summed_head_on_result = np.array(summed_head_on_result)
+    summed_side_on_result = np.array(summed_side_on_result)
+    return np.min(summed_head_on_result, axis = 0)
